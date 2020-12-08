@@ -88,6 +88,99 @@ boot_sample(sim_df_nonconst) %>%
   ylim(-5, 16)
 ```
 
+```{r}
+boot_sample(sim_df_nonconst) %>% 
+  lm(y ~ x, data = .) %>% 
+  broom::tidy()
+```
+
+## Many samples and analysis 
+
+```{r}
+boot_straps = 
+  tibble(
+    strap_number = 1:1000, 
+    strap_sample = rerun(1000, boot_sample(sim_df_nonconst))
+  )
+```
+
+Can I run my analysis on these...? 
+
+```{r}
+boot_results = 
+  boot_straps %>% 
+  mutate(
+    models = map(.x = strap_sample, ~lm(y ~ x, data = .x)), 
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(strap_number, results) %>% 
+  unnest(results)
+```
+
+What do I have now? 
+
+Not super interested in std.error:p.value in this case...
+Interested in distribution of estimated intercept and slope for each strap 
+
+```{r}
+boot_results %>% 
+  group_by(term) %>% 
+  summarize(
+    mean_est = mean(estimate), 
+    sd_est = sd(estimate)
+  )
+```
+
+
+^ Bootstrap is getting uncertainty estimates that are more accurate than we got in just the one sample...? 
+
+Look at the distributions...
+
+Under repeated sampling, this is what the estimated slopes are going to be: 
+
+```{r}
+boot_results %>% 
+  filter(term == "x") %>% 
+  ggplot(aes(x = estimate)) + 
+  geom_density()
+```
+
+Construct bootstrap CI based on repeated sampling
+
+```{r}
+boot_results %>% 
+  group_by(term) %>% 
+  summarize(
+    ci_lower = quantile(estimate, 0.025), 
+    ci_upper = quantile(estimate, 0.975)
+  )
+```
+
+## Bootstrap using modelr
+
+Can we simplify anything? 
+
+This creates the kind of sample that we did by hand when we made the function to draw a sample with replacement... resample object 
+
+Here we are: generating 1000 bootstrap samples, analyzing and summarizing each, extracting results, summarizing results to get the mean and std error of the estimates .... in just this chunk of code below !!
+
+```{r}
+sim_df_nonconst %>% 
+  bootstrap(1000, id = "strap_number") %>% 
+  mutate(
+    models = map(.x = strap, ~lm(y ~ x, data = .x)), 
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(strap_number, results) %>% 
+  unnest(results) %>% 
+  group_by(term) %>% 
+  summarize(
+    mean_est = mean(estimate), 
+    sd_est = sd(estimate)
+  )
+```
+
+
 
 
 
